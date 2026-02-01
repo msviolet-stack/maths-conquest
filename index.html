@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Math Scrabble (2‑Player)</title>
+  <style>
+    :root{
+      --bg:#f6f8fc;
+      --card:#ffffff;
+      --line:#e0e3eb;
+      --text:#1f1f1f;
+      --muted:#5f6368;
+      --accent:#1a73e8;
+      --danger:#d93025;
+      --ok:#188038;
+      --shadow: 0 1px 2px rgba(0,0,0,.06), 0 10px 30px rgba(0,0,0,.10);
+      --radius: 18px;
+    }
+
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+
+    header{padding:18px 18px 10px}
+    header h1{margin:0;font-size:18px}
+    header p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.35}
+
+    .wrap{display:grid;grid-template-columns: 1fr 360px;gap:14px;padding:14px 18px 22px;max-width:1200px;margin:0 auto}
+
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+
+    /* Board */
+    .boardCard{padding:14px}
+    .boardTop{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .status{font-size:13px;color:var(--muted)}
+    .status b{color:var(--text)}
+
+    .board{display:grid;grid-template-columns: repeat(15, 1fr);gap:6px;aspect-ratio: 1 / 1;}
+    .cell{
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-width:0;
+      user-select:none;
+      position:relative;
+    }
+    .cell button{
+      all:unset;
+      cursor:pointer;
+      width:100%;
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:12px;
+      font-weight:700;
+      font-size:18px;
+    }
+    .cell button:focus-visible{outline:3px solid rgba(26,115,232,.35)}
+
+    .cell[data-hint="center"]::after{
+      content:"★";
+      position:absolute;
+      font-size:14px;
+      color:#c1c7d0;
+    }
+
+    .tile{
+      width:44px;height:44px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:800;
+      background:#fff;
+      cursor:pointer;
+      user-select:none;
+      position:relative;
+    }
+    .tile small{
+      position:absolute;
+      right:7px;bottom:6px;
+      font-size:10px;
+      color:var(--muted);
+      font-weight:700;
+    }
+    .tile.selected{outline:3px solid rgba(26,115,232,.35)}
+    .tile.locked{background:#f2f4f7;cursor:default}
+
+    /* Side panel */
+    .side{padding:14px}
+    .side h2{margin:0 0 8px;font-size:14px}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between}
+
+    .scoreBox{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 12px}
+    .score{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:10px;
+      background:#fff;
+    }
+    .score .name{font-size:12px;color:var(--muted)}
+    .score .pts{font-size:24px;font-weight:800;margin-top:2px}
+    .score.active{outline:3px solid rgba(26,115,232,.25)}
+
+    .rack{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border:1px dashed #d0d5dd;border-radius:16px;background:#fbfcff}
+
+    .btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+    button.primary, button.ghost{
+      border:none;border-radius:14px;padding:10px 12px;
+      cursor:pointer;font-weight:700;font-size:13px;
+    }
+    button.primary{background:var(--accent);color:#fff}
+    button.primary:disabled{opacity:.5;cursor:not-allowed}
+    button.ghost{background:#eef3fd;color:#1a73e8}
+
+    .log{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+    .msg{font-size:13px;line-height:1.4;margin:8px 0;color:var(--muted)}
+    .msg.ok{color:var(--ok)}
+    .msg.err{color:var(--danger)}
+
+    .mini{font-size:12px;color:var(--muted);line-height:1.4}
+    kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;background:#f2f4f7;border:1px solid #e5e7eb;border-bottom-width:2px;border-radius:8px;padding:2px 6px}
+
+    @media (max-width: 980px){
+      .wrap{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Math Scrabble (2‑Player)</h1>
+    <p>
+      Place tiles to form a correct equation (must include <b>=</b>). Use numbers <b>0–9</b>, <b>+</b>, <b>−</b>, <b>×</b>, <b>÷</b>, <b>(</b>, <b>)</b>.
+      Each turn, place tiles in one straight line. Score = sum of tile points you placed.
+    </p>
+  </header>
+
+  <main class="wrap">
+    <section class="card boardCard">
+      <div class="boardTop">
+        <div class="status">
+          Turn: <b id="turnName">Player 1</b> · Tiles placed this turn: <b id="placedCount">0</b>
+        </div>
+        <div class="status">
+          Bag: <b id="bagCount">0</b> tiles
+        </div>
+      </div>
+      <div id="board" class="board" aria-label="Game board"></div>
+      <p class="mini" style="margin:10px 0 0">
+        Tips: Click a rack tile to select it, then click a board square to place. Click a placed tile to undo (before ending turn).
+      </p>
+    </section>
+
+    <aside class="card side">
+      <div class="row">
+        <h2>Scores</h2>
+        <div class="mini">Valid equation example: <kbd>(</kbd><kbd>8</kbd><kbd>+</kbd><kbd>4</kbd><kbd>)</kbd><kbd>÷</kbd><kbd>3</kbd><kbd>=</kbd><kbd>4</kbd></div>
+      </div>
+
+      <div class="scoreBox">
+        <div id="p1Box" class="score active">
+          <div class="name">Player 1</div>
+          <div id="p1Score" class="pts">0</div>
+        </div>
+        <div id="p2Box" class="score">
+          <div class="name">Player 2</div>
+          <div id="p2Score" class="pts">0</div>
+        </div>
+      </div>
+
+      <h2>Rack</h2>
+      <div id="rack" class="rack" aria-label="Current player's rack"></div>
+
+      <div class="btns">
+        <button id="endTurnBtn" class="primary" disabled>End turn</button>
+        <button id="clearBtn" class="ghost">Clear placed</button>
+        <button id="swapBtn" class="ghost">Swap rack</button>
+        <button id="newGameBtn" class="ghost">New game</button>
+      </div>
+
+      <div class="log">
+        <h2>Message</h2>
+        <div id="message" class="msg">Place tiles to make a correct equation.</div>
+      </div>
+
+      <div class="mini" style="margin-top:10px">
+        Rules (simple MVP):
+        <ul style="margin:6px 0 0 18px;padding:0">
+          <li>Each turn, place 1+ tiles in one row or one column.</li>
+          <li>Your line must contain exactly one <b>=</b>.</li>
+          <li>Left side value must equal right side value.</li>
+          <li>No cross-word checking yet (this is a starter version).</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+<script>
+(() => {
+  // ---------- Config ----------
+  const SIZE = 15;
+  const RACK_SIZE = 7;
+
+  // Tile values (feel free to tweak)
+  const TILE_POINTS = {
+    '0':1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':2,'8':2,'9':2,
+    '+':2,'−':2,'×':3,'÷':3,'(' :1, ')':1,'=':4
+  };
+
+  // A simple bag (distribution). Increase counts for a longer game.
+  function makeBag(){
+    const bag = [];
+    const pushMany = (ch, n) => { for(let i=0;i<n;i++) bag.push(ch); };
+
+    // digits
+    pushMany('0', 6);
+    pushMany('1', 8);
+    pushMany('2', 8);
+    pushMany('3', 8);
+    pushMany('4', 7);
+    pushMany('5', 7);
+    pushMany('6', 7);
+    pushMany('7', 6);
+    pushMany('8', 6);
+    pushMany('9', 6);
+
+    // ops & symbols
+    pushMany('+', 8);
+    pushMany('−', 8);
+    pushMany('×', 6);
+    pushMany('÷', 6);
+    pushMany('(', 6);
+    pushMany(')', 6);
+    pushMany('=', 8);
+
+    return shuffle(bag);
+  }
+
+  // ---------- State ----------
+  let bag = [];
+  let board = []; // SIZE x SIZE: {ch, locked, placedByTurn}
+  let currentPlayer = 0; // 0 or 1
+  let scores = [0,0];
+  let racks = [[],[]];
+  let selectedRackIndex = null;
+  let placedThisTurn = []; // list of {r,c,ch, fromRackIndex}
+
+  // ---------- DOM ----------
+  const elBoard = document.getElementById('board');
+  const elRack = document.getElementById('rack');
+  const elTurnName = document.getElementById('turnName');
+  const elPlacedCount = document.getElementById('placedCount');
+  const elBagCount = document.getElementById('bagCount');
+  const elMsg = document.getElementById('message');
+  const elP1Score = document.getElementById('p1Score');
+  const elP2Score = document.getElementById('p2Score');
+  const elP1Box = document.getElementById('p1Box');
+  const elP2Box = document.getElementById('p2Box');
+
+  const endTurnBtn = document.getElementById('endTurnBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const swapBtn = document.getElementById('swapBtn');
+  const newGameBtn = document.getElementById('newGameBtn');
+
+  // ---------- Helpers ----------
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function setMessage(text, kind=''){
+    elMsg.className = 'msg' + (kind ? ' ' + kind : '');
+    elMsg.textContent = text;
+  }
+
+  function drawTiles(n){
+    const out = [];
+    for(let i=0;i<n;i++){
+      if(bag.length===0) break;
+      out.push(bag.pop());
+    }
+    return out;
+  }
+
+  function ensureRackFilled(p){
+    while(racks[p].length < RACK_SIZE && bag.length>0){
+      racks[p].push(...drawTiles(1));
+    }
+  }
+
+  function pointsFor(ch){
+    return TILE_POINTS[ch] ?? 1;
+  }
+
+  function updateTop(){
+    elTurnName.textContent = currentPlayer === 0 ? 'Player 1' : 'Player 2';
+    elPlacedCount.textContent = String(placedThisTurn.length);
+    elBagCount.textContent = String(bag.length);
+    elP1Score.textContent = String(scores[0]);
+    elP2Score.textContent = String(scores[1]);
+    elP1Box.classList.toggle('active', currentPlayer===0);
+    elP2Box.classList.toggle('active', currentPlayer===1);
+
+    endTurnBtn.disabled = placedThisTurn.length === 0;
+  }
+
+  // ---------- Rendering ----------
+  function renderBoard(){
+    elBoard.innerHTML = '';
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if(r===7 && c===7 && !board[r][c].ch) cell.dataset.hint='center';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('aria-label', `Board cell ${r+1}, ${c+1}`);
+
+        const sq = board[r][c];
+        btn.textContent = sq.ch || '';
+        if(sq.locked) btn.style.background = '#f2f4f7';
+
+        btn.addEventListener('click', () => onBoardCellClick(r,c));
+        cell.appendChild(btn);
+        elBoard.appendChild(cell);
+      }
+    }
+  }
+
+  function renderRack(){
+    elRack.innerHTML = '';
+    const rack = racks[currentPlayer];
+    rack.forEach((ch, i) => {
+      const t = document.createElement('div');
+      t.className = 'tile' + (selectedRackIndex===i ? ' selected' : '');
+      t.tabIndex = 0;
+      t.setAttribute('role','button');
+      t.setAttribute('aria-label', `Tile ${ch}`);
+      t.textContent = ch;
+      const pts = document.createElement('small');
+      pts.textContent = String(pointsFor(ch));
+      t.appendChild(pts);
+
+      t.addEventListener('click', () => {
+        selectedRackIndex = (selectedRackIndex===i) ? null : i;
+        setMessage(selectedRackIndex===null ? 'Select a tile, then click the board.' : `Selected: ${rack[i]} (click a board square)`);
+        renderRack();
+      });
+
+      t.addEventListener('keydown', (e) => {
+        if(e.key==='Enter' || e.key===' '){
+          e.preventDefault();
+          t.click();
+        }
+      });
+
+      elRack.appendChild(t);
+    });
+  }
+
+  // ---------- Placement logic ----------
+  function onBoardCellClick(r,c){
+    const sq = board[r][c];
+
+    // Undo: if this square was placed this turn, remove it
+    if(sq.ch && !sq.locked && sq.placedByTurn){
+      undoPlacedAt(r,c);
+      return;
+    }
+
+    if(sq.ch) return; // occupied
+    if(selectedRackIndex===null) {
+      setMessage('Pick a rack tile first.', 'err');
+      return;
+    }
+
+    // If already placed this turn, enforce same row or same col
+    if(placedThisTurn.length>=1){
+      const rows = new Set(placedThisTurn.map(p=>p.r));
+      const cols = new Set(placedThisTurn.map(p=>p.c));
+      const mustRow = rows.size===1;
+      const mustCol = cols.size===1;
+
+      if(mustRow && r !== [...rows][0]){
+        setMessage('This turn: place tiles in ONE row only (or clear and start again).', 'err');
+        return;
+      }
+      if(mustCol && c !== [...cols][0]){
+        setMessage('This turn: place tiles in ONE column only (or clear and start again).', 'err');
+        return;
+      }
+    }
+
+    // Place
+    const rack = racks[currentPlayer];
+    const ch = rack[selectedRackIndex];
+    board[r][c] = { ch, locked:false, placedByTurn:true };
+    placedThisTurn.push({ r,c,ch, fromRackIndex:selectedRackIndex });
+
+    // Remove from rack
+    rack.splice(selectedRackIndex, 1);
+    selectedRackIndex = null;
+
+    setMessage('Placed. You can place more tiles in the same row/column, or end your turn.');
+    renderBoard();
+    renderRack();
+    updateTop();
+  }
+
+  function undoPlacedAt(r,c){
+    const idx = placedThisTurn.findIndex(p => p.r===r && p.c===c);
+    if(idx<0) return;
+
+    // return tile to rack
+    const ch = placedThisTurn[idx].ch;
+    racks[currentPlayer].push(ch);
+
+    // clear square
+    board[r][c] = { ch:'', locked:false, placedByTurn:false };
+
+    placedThisTurn.splice(idx,1);
+    setMessage('Undid placement.');
+    renderBoard();
+    renderRack();
+    updateTop();
+  }
+
+  function clearPlaced(){
+    // undo all placed this turn
+    while(placedThisTurn.length){
+      const p = placedThisTurn[placedThisTurn.length-1];
+      undoPlacedAt(p.r,p.c);
+    }
+  }
+
+  // ---------- Turn validation ----------
+  function getMainLine(){
+    // returns {cells:[{r,c,ch}], text, isRow, index} for the line containing this turn's tiles
+    const pts = placedThisTurn.slice();
+    if(pts.length===0) return null;
+
+    const sameRow = pts.every(p => p.r === pts[0].r);
+    const sameCol = pts.every(p => p.c === pts[0].c);
+    const isRow = sameRow;
+
+    if(!sameRow && !sameCol) return null;
+
+    if(isRow){
+      const r = pts[0].r;
+      const cols = pts.map(p=>p.c);
+      let minC = Math.min(...cols);
+      let maxC = Math.max(...cols);
+
+      // Expand to include existing locked tiles that connect
+      while(minC>0 && board[r][minC-1].ch) minC--;
+      while(maxC<SIZE-1 && board[r][maxC+1].ch) maxC++;
+
+      // Collect full contiguous string
+      const cells = [];
+      for(let c=minC;c<=maxC;c++){
+        const ch = board[r][c].ch;
+        if(!ch) return null; // gap
+        cells.push({r,c,ch});
+      }
+      return {cells, text: cells.map(x=>x.ch).join(''), isRow:true, index:r};
+    } else {
+      const c = pts[0].c;
+      const rows = pts.map(p=>p.r);
+      let minR = Math.min(...rows);
+      let maxR = Math.max(...rows);
+
+      while(minR>0 && board[minR-1][c].ch) minR--;
+      while(maxR<SIZE-1 && board[maxR+1][c].ch) maxR++;
+
+      const cells = [];
+      for(let r=minR;r<=maxR;r++){
+        const ch = board[r][c].ch;
+        if(!ch) return null;
+        cells.push({r,c,ch});
+      }
+      return {cells, text: cells.map(x=>x.ch).join(''), isRow:false, index:c};
+    }
+  }
+
+  function normalizeExpression(str){
+    // Convert display ops to JS ops
+    return str.replaceAll('×','*').replaceAll('÷','/').replaceAll('−','-');
+  }
+
+  function safeEval(expr){
+    // allow only digits, operators, parentheses, decimals (optional), and whitespace
+    // (We don't generate decimals, but allow them anyway.)
+    if(!/^[-+*/()\d.\s]+$/.test(expr)) return {ok:false, value:null, err:'Invalid characters'};
+
+    // Prevent nonsense like ".." or "**"? Keep it simple and catch errors.
+    try{
+      // eslint-disable-next-line no-new-func
+      const fn = new Function(`"use strict"; return (${expr});`);
+      const v = fn();
+      if(typeof v !== 'number' || !Number.isFinite(v)) return {ok:false, value:null, err:'Not a finite number'};
+      return {ok:true, value:v, err:''};
+    } catch(e){
+      return {ok:false, value:null, err:'Syntax error'};
+    }
+  }
+
+  function isValidEquation(text){
+    // Must contain exactly one '='
+    const parts = text.split('=');
+    if(parts.length !== 2) return {ok:false, reason:'Your line must contain exactly one = sign.'};
+
+    const leftRaw = parts[0];
+    const rightRaw = parts[1];
+    if(leftRaw.trim()==='' || rightRaw.trim()==='') return {ok:false, reason:'Both sides of the equation need something.'};
+
+    // Basic bracket balance check (cheap)
+    const balanced = (s) => {
+      let k=0;
+      for(const ch of s){
+        if(ch==='(') k++;
+        if(ch===')') k--;
+        if(k<0) return false;
+      }
+      return k===0;
+    };
+    if(!balanced(leftRaw) || !balanced(rightRaw)) return {ok:false, reason:'Brackets are not balanced.'};
+
+    const left = normalizeExpression(leftRaw);
+    const right = normalizeExpression(rightRaw);
+
+    const L = safeEval(left);
+    const R = safeEval(right);
+    if(!L.ok) return {ok:false, reason:`Left side is not a valid expression (${L.err}).`};
+    if(!R.ok) return {ok:false, reason:`Right side is not a valid expression (${R.err}).`};
+
+    // float-safe compare
+    const equal = Math.abs(L.value - R.value) < 1e-9;
+    if(!equal) return {ok:false, reason:`Not equal: left=${trimNum(L.value)} right=${trimNum(R.value)}.`};
+
+    return {ok:true, reason:`Correct! ${trimNum(L.value)} = ${trimNum(R.value)}`};
+  }
+
+  function trimNum(n){
+    const s = String(Math.round(n*1e9)/1e9);
+    return s.includes('.') ? s.replace(/0+$/,'').replace(/\.$/,'') : s;
+  }
+
+  function scorePlacedTiles(){
+    return placedThisTurn.reduce((sum,p)=>sum+pointsFor(p.ch),0);
+  }
+
+  function lockPlacedTiles(){
+    placedThisTurn.forEach(p => {
+      board[p.r][p.c].locked = true;
+      board[p.r][p.c].placedByTurn = false;
+    });
+  }
+
+  function endTurn(){
+    const line = getMainLine();
+    if(!line){
+      setMessage('Your tiles must form one continuous line (no gaps).', 'err');
+      return;
+    }
+
+    const check = isValidEquation(line.text);
+    if(!check.ok){
+      setMessage(check.reason, 'err');
+      return;
+    }
+
+    const gained = scorePlacedTiles();
+    scores[currentPlayer] += gained;
+
+    lockPlacedTiles();
+    placedThisTurn = [];
+
+    // refill rack
+    ensureRackFilled(currentPlayer);
+
+    // switch player
+    currentPlayer = (currentPlayer===0 ? 1 : 0);
+    ensureRackFilled(currentPlayer);
+    selectedRackIndex = null;
+
+    setMessage(`✅ ${check.reason}  (+${gained} points)`, 'ok');
+    renderBoard();
+    renderRack();
+    updateTop();
+
+    // game end?
+    if(bag.length===0 && racks[0].length===0 && racks[1].length===0){
+      const winner = scores[0]===scores[1] ? 'It\'s a tie!' : (scores[0]>scores[1] ? 'Player 1 wins!' : 'Player 2 wins!');
+      setMessage(`Game over. ${winner}`, 'ok');
+    }
+  }
+
+  function swapRack(){
+    if(placedThisTurn.length>0){
+      setMessage('Swap is only allowed when you have not placed any tiles this turn.', 'err');
+      return;
+    }
+    if(bag.length < racks[currentPlayer].length){
+      setMessage('Not enough tiles in the bag to swap right now.', 'err');
+      return;
+    }
+
+    const rack = racks[currentPlayer];
+    // put back
+    rack.forEach(ch => bag.push(ch));
+    shuffle(bag);
+
+    // draw new
+    racks[currentPlayer] = drawTiles(RACK_SIZE);
+    ensureRackFilled(currentPlayer);
+
+    setMessage('Swapped your rack.');
+    selectedRackIndex = null;
+    renderRack();
+    updateTop();
+  }
+
+  // ---------- New game ----------
+  function newGame(){
+    bag = makeBag();
+    board = Array.from({length: SIZE}, () => Array.from({length: SIZE}, () => ({ch:'', locked:false, placedByTurn:false})));
+    scores = [0,0];
+    racks = [[],[]];
+    racks[0] = drawTiles(RACK_SIZE);
+    racks[1] = drawTiles(RACK_SIZE);
+    ensureRackFilled(0);
+    ensureRackFilled(1);
+    currentPlayer = 0;
+    selectedRackIndex = null;
+    placedThisTurn = [];
+
+    setMessage('Place tiles to make a correct equation.');
+    renderBoard();
+    renderRack();
+    updateTop();
+  }
+
+  // ---------- Events ----------
+  endTurnBtn.addEventListener('click', endTurn);
+  clearBtn.addEventListener('click', () => {
+    if(placedThisTurn.length===0){
+      setMessage('Nothing to clear.');
+      return;
+    }
+    clearPlaced();
+    setMessage('Cleared placed tiles.');
+  });
+  swapBtn.addEventListener('click', swapRack);
+  newGameBtn.addEventListener('click', newGame);
+
+  // Start
+  newGame();
+})();
+</script>
+</body>
+</html>
